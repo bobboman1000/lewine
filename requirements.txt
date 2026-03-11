@@ -1,0 +1,8 @@
+lxml[html_clean]
+transformers
+langchain
+newspaper3k
+feedparser
+langchain_community
+torch
+langdetect

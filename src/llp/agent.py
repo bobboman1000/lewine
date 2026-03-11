@@ -1,37 +1,41 @@
-from news import fetch_news, extract_article
-from transformers import pipeline
-from langchain.tools import Tool
-from langchain.llms import HuggingFacePipeline
+from langchain.chat_models import ChatOpenAI
+from langchain_community.llms.huggingface_pipeline import HuggingFacePipeline
+from langchain_core.prompts import PromptTemplate
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
 from langchain.chains import LLMChain
-from langchain.agents import initialize_agent, AgentType
-from config import sources, test_k
 
-# Set up local summarizer
-summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
-llm = HuggingFacePipeline(pipeline=summarizer)
+def get_local_summarizer():
+    summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
+    return HuggingFacePipeline(pipeline=summarizer)
 
-def run_agent(rss_url):
-    news_items = fetch_news(rss_url)
-    summaries = []
-    for item in news_items:
-        article = extract_article(item['link'])
-        summary = llm(article['text'])[0]['summary_text']
-        summaries.append({
-            'title': article['title'],
-            'summary': summary,
-            'full_text': article['text'],
-            'link': item['link']
-        })
-    return summaries
+def get_local_agent(model_name: str = "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B"):
 
-if __name__ == "__main__":
-    rss_urls = sources
+    # Load tokenizer and model
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto", torch_dtype="auto")
 
-    if test_k:
-        rss_urls = rss_urls[:test_k]
+    # Build the text generation pipeline
+    generator = pipeline("text-generation", model=model, tokenizer=tokenizer, max_new_tokens=1024)
 
-    summaries = [run_agent(rss_url) for rss_url in rss_urls]
-    for summary in summaries:
-        print(f"Title: {summary['title']}")
-        print(f"Summary: {summary['summary']}")
-        print(f"Link: {summary['link']}\n")
+    return generator
+
+def get_openai_agent():
+    # Step 1: Prepare the LLM
+    llm = ChatOpenAI(model_name="gpt-4", temperature=0.7)
+
+    # Step 2: Prompt template
+    prompt_template = PromptTemplate.from_template("""
+    You are a professional news anchor. Given a list of news items, create a coherent, engaging news show script.
+    Use a human tone, vary your transitions between stories, and maintain clarity and professionalism.
+    Include an intro, smooth transitions, and a closing outro.
+
+    News Items:
+    {news_items}
+
+    Now write the full news show script.
+    """)
+
+    # Step 3: LangChain chain
+    chain = LLMChain(llm=llm, prompt=prompt_template)
+
+    return chain
